@@ -1,0 +1,25 @@
+{
+  "compile_status": "passed",
+  "content_status": "needs_review",
+  "content_note": "这是内置英文论文示例的实际 XeLaTeX 编译产物。已检查编译日志与页面外观；未做完整数学语义验证，也不是对上传文档的转换结果。",
+  "before": {
+    "figures": 1,
+    "display_math": 1,
+    "citations": 1,
+    "sections": 4
+  },
+  "after": {
+    "figures": 1,
+    "display_math": 1,
+    "citations": 1,
+    "sections": 4
+  },
+  "warnings": [
+    "示例通过真实 latexmk + XeLaTeX 编译；引用与交叉引用已解析。",
+    "自动结构检查不代表数学语义完全正确，仍应核对公式和文献对应。",
+    "当前示例为英文单栏 Article 模板；不会套用上传区选择的模板。"
+  ],
+  "engine": "xelatex",
+  "attempts": 1,
+  "entry": "main.tex"
+}

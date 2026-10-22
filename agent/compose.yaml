@@ -1,0 +1,35 @@
+services:
+  agent:
+    build: .
+    ports: ["127.0.0.1:8000:8000"]
+    environment:
+      AGENT_TOKEN: ${AGENT_TOKEN:?Set AGENT_TOKEN in .env}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8080}
+      COMPILER_URL: http://compiler:8001
+      COMPILER_TOKEN: ${COMPILER_TOKEN:?Set COMPILER_TOKEN in .env}
+      DATA_DIR: /data
+    volumes: ["jobs:/data"]
+    networks: [frontend, compiler]
+    depends_on: [compiler]
+    mem_limit: 1g
+    pids_limit: 96
+  compiler:
+    build:
+      context: .
+      dockerfile: Dockerfile.compiler
+    environment:
+      COMPILER_TOKEN: ${COMPILER_TOKEN:?Set COMPILER_TOKEN in .env}
+    networks: [compiler]
+    read_only: true
+    tmpfs: ["/tmp:size=768m,uid=1000,gid=1000,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 1g
+    cpus: 1.0
+    pids_limit: 64
+networks:
+  frontend: {}
+  compiler:
+    internal: true
+volumes:
+  jobs: {}

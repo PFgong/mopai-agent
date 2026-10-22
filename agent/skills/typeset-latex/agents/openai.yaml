@@ -1,0 +1,4 @@
+interface:
+  display_name: "LaTeX 文档排版助手"
+  short_description: "转换文档、核对公式图片引用、编译修复，并直接回答 LaTeX 编写与排版问题"
+  default_prompt: "使用 $typeset-latex 将上传的文档排版为可下载的 LaTeX 工程，并报告实际编译与内容核验结果。"

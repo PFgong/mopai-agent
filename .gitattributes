@@ -1,0 +1,7 @@
+# Normalise line endings so the Dockerfiles and scripts stay runnable after a
+# checkout on Linux/macOS, regardless of the committer's platform.
+* text=auto eol=lf
+
+*.png binary
+*.pdf binary
+*.zip binary

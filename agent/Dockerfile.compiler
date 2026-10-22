@@ -1,0 +1,9 @@
+FROM python:3.12-slim
+RUN apt-get update && apt-get install -y --no-install-recommends latexmk texlive-xetex texlive-luatex texlive-latex-extra texlive-lang-chinese texlive-fonts-recommended biber && apt-get clean
+WORKDIR /app
+RUN pip install --no-cache-dir fastapi uvicorn python-multipart
+COPY common.py compiler.py ./
+RUN useradd -m compiler
+USER compiler
+ENV PYTHONDONTWRITEBYTECODE=1
+CMD ["uvicorn","compiler:app","--host","0.0.0.0","--port","8001","--workers","1"]
