@@ -11,108 +11,75 @@ correct.
 
 ---
 
-## Pick one path
+## Three steps
 
-| What you want | What to install | Time |
+### 1. Install three tools
+
+| Tool | Purpose | Where | Verify with |
+| --- | --- | --- | --- |
+| **Python 3.10+** | runs the local services | <https://www.python.org/downloads/> | `python --version` |
+| **Pandoc** | converts Word / Markdown | <https://github.com/jgm/pandoc/releases> | `pandoc --version` |
+| **MiKTeX** | compiles .tex into PDF | <https://miktex.org/download> | `xelatex --version` |
+
+On Windows, tick **"Add Python to PATH"** during the Python install. After installing
+MiKTeX, open **MiKTeX Console** and run `Tasks → Update` once, and set
+`Always install missing packages on the fly` to **Yes**.
+
+To just browse the demo, no install is needed: `cd dist && python -m http.server 8080`,
+then open <http://localhost:8080> and click the sample.
+
+### 2. Double-click `start.bat` (Windows)
+
+From the project root, double-click `start.bat`. It does the rest:
+
+```
+check toolchain → prepare Python env → check ports → start services → health check
+```
+
+If a tool is missing it tells you which one, where to get it and how to fix it, e.g.:
+
+```
+  [WARN] Pandoc not found — DOCX / Markdown conversion unavailable
+```
+
+Fix what it reports and double-click again. Missing Python packages are installed
+automatically.
+
+### 3. Open the browser
+
+On success it opens a result page listing the address:
+
+- **Workbench**: <http://localhost:8080> ← this is the one you use
+- API docs: <http://localhost:8000/docs>
+- Agent Token: shown on that page (default `local-dev-token`)
+
+In the workbench, open **Settings** and enter Agent URL `http://localhost:8000` plus that
+token. Then upload a document.
+
+**Stop everything**: press `Q` in the launcher window, or double-click `stop.bat`.
+
+---
+
+## What the page can do
+
+**Upload** DOCX, PDF, TeX, ZIP, images, Markdown or TXT. Bundle multi-file TeX projects,
+figures and bibliographies into a ZIP and give the entry path (e.g. `paper/main.tex`).
+Limit is 60 MB.
+
+**Use your own layout template**: upload a `.tex` under "Layout template" (for journal or
+university templates, zip the `.cls`, `.sty` and `.bib` files together). The tool reads its
+document class, font size, paper, columns, margins, line spacing, fonts and bibliography
+style, shows them in the UI, and applies them to the result. Title and author blocks from
+the template are stripped so they never overwrite your document.
+
+**Models** (optional):
+
+| Setting | Used for | Needed when |
 | --- | --- | --- |
-| **[A] Just look at it** | nothing | 1 min |
-| **[B] Process your own docs locally (no Docker)** | Python + Pandoc + TeX | 20 min |
-| **[C] Run it on a server** | Docker | 10 min |
+| Text model | restyling, build repair, Q&A | you typed extra layout instructions |
+| VL / OCR model | per-page PDF and image transcription | you process PDFs or images |
 
-Not sure? Pick **B**.
-
----
-
-## A. Just look (zero install)
-
-`dist/` is a static page with a **real compiled sample** inside; everything is downloadable.
-
-```bash
-cd dist
-python -m http.server 8080 --bind 127.0.0.1
-```
-
-Open <http://localhost:8080> and click the sample.
-
----
-
-## B. Local setup (no Docker)
-
-### B1. Install these
-
-| # | Tool | Purpose | Required? | Where | Verify with |
-| --- | --- | --- | --- | --- | --- |
-| 1 | **Python 3.9+** | runs the backend | yes | <https://www.python.org/downloads/> | `python --version` |
-| 2 | **Pandoc** | converts DOCX / Markdown | only for DOCX, MD, TXT | <https://github.com/jgm/pandoc/releases><br>`brew install pandoc` / `sudo apt install pandoc` | `pandoc --version` |
-| 3 | **TeX distribution** | compiles .tex into PDF | only if you want PDF | MiKTeX <https://miktex.org/download> (Windows)<br>`sudo apt install texlive-xetex latexmk` | `xelatex --version` |
-| 4 | **Models** | PDF/image transcription, restyling, Q&A | optional | any Chat Completions compatible endpoint | "Test connection" in the UI |
-
-> **Pandoc must be on PATH.** If it is not, set `PANDOC_PATH` to the full path of `pandoc.exe`.
-
-### B2. Install Python deps
-
-```bash
-cd agent
-python -m venv .venv
-source .venv/bin/activate          # Windows: source .venv/Scripts/activate
-pip install -r requirements.txt
-```
-
-### B3. Start it (two terminals)
-
-**Terminal 1 — compiler service**
-```bash
-cd agent
-export COMPILER_TOKEN=my-compiler-token
-.venv/Scripts/python -m uvicorn compiler:app --host 127.0.0.1 --port 8001
-```
-
-**Terminal 2 — Agent service**
-```bash
-cd agent
-export AGENT_TOKEN=my-agent-token
-export ALLOWED_ORIGINS=http://localhost:8080
-export COMPILER_URL=http://127.0.0.1:8001
-export COMPILER_TOKEN=my-compiler-token
-.venv/Scripts/python -m uvicorn server:app --host 127.0.0.1 --port 8000
-```
-
-Optionally serve the page: `cd dist && python -m http.server 8080 --bind 127.0.0.1`
-
-### B4. Use it
-
-Open <http://localhost:8080> → Settings → Agent URL `http://localhost:8000`,
-Agent Token `my-agent-token`. Base URLs need the vendor's `/v1` prefix.
-
-Or skip the browser:
-
-```bash
-curl http://127.0.0.1:8000/health
-ID=$(curl -s -X POST -H "X-Agent-Token: my-agent-token" -F "file=@my.tex" \
-  -F 'config={"template":"article","engine":"xelatex"}' \
-  http://127.0.0.1:8000/jobs | python -c "import sys,json;print(json.load(sys.stdin)['id'])")
-curl -s -H "X-Agent-Token: my-agent-token" http://127.0.0.1:8000/jobs/$ID
-```
-
----
-
-## C. Docker (recommended for servers)
-
-```bash
-cd agent
-cp .env.example .env      # set AGENT_TOKEN and COMPILER_TOKEN
-docker compose up --build -d
-```
-
-Generate tokens with `python -c "import secrets;print(secrets.token_urlsafe(32))"`.
-
-| Variable | Required | Purpose |
-| --- | --- | --- |
-| `AGENT_TOKEN` | yes | Sent by the page. Empty means every route returns 503 |
-| `ALLOWED_ORIGINS` | yes | Page origin, e.g. `http://localhost:8080` |
-| `COMPILER_TOKEN` | yes | Shared secret, identical in both services |
-| `COMPILER_URL` | no | Compiler address. Empty skips compilation |
-| `DATA_DIR` | no | Job storage, default `./jobs` |
+Both need a Chat Completions compatible endpoint. Word, TeX and ZIP work without any model.
 
 ---
 
@@ -120,13 +87,56 @@ Generate tokens with `python -c "import secrets;print(secrets.token_urlsafe(32))
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| "未找到 pandoc" | Pandoc missing or not on PATH | see B1 #2 |
+| "Python not found" | not installed or not on PATH | reinstall and tick "Add Python to PATH" |
+| "Pandoc not found" | not on PATH | add `C:\Program Files\Pandoc\` to PATH |
+| "xelatex not found" | TeX missing | install MiKTeX and put it on PATH |
 | `could not find the script engine 'perl.exe'` | MiKTeX's latexmk needs Perl | **ignore it** — the tool falls back to running xelatex directly |
 | `Undefined control sequence \IfDocumentMetadataTF` | outdated MiKTeX | MiKTeX Console → Tasks → Update |
-| `compile_status` is `not_run` | `COMPILER_URL` unset | start the compiler service and set it |
-| Compile always fails on a missing package | compiler has no network | for Docker, edit `Dockerfile.compiler` and rebuild |
-| "无法连接 Agent" | Agent down or wrong `ALLOWED_ORIGINS` | check terminal 2 |
-| Deployment bundle download 404s | `dist/mopai-agent.zip` not generated | run `python scripts/package.py` |
+| `File 'xxx.sty' not found` | missing package | enable MiKTeX on-the-fly installation |
+| Port 8000/8001/8080 busy | previous run still alive | run `start.bat -Reset`, or `stop.bat` |
+| "cannot reach Agent" | services not up | check `agent/logs/` |
+
+Logs are in `agent/logs/`: `agent.log`, `compiler.log`, `web.log`.
+
+---
+
+## Other ways to start
+
+**macOS / Linux** (no bat script — two terminals):
+
+```bash
+cd agent
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+
+# Terminal 1: compiler service
+COMPILER_TOKEN=my-compiler-token python -m uvicorn compiler:app --host 127.0.0.1 --port 8001
+
+# Terminal 2: Agent service
+AGENT_TOKEN=my-agent-token ALLOWED_ORIGINS=http://localhost:8080 \
+COMPILER_URL=http://127.0.0.1:8001 COMPILER_TOKEN=my-compiler-token \
+python -m uvicorn server:app --host 127.0.0.1 --port 8000
+
+# Terminal 3: page
+cd ../dist && python -m http.server 8080 --bind 127.0.0.1
+```
+
+**Docker** (long-running servers):
+
+```bash
+cd agent
+cp .env.example .env      # set AGENT_TOKEN and COMPILER_TOKEN
+docker compose up --build -d
+```
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `AGENT_TOKEN` | yes | Sent by the page. Empty means every route returns 503 |
+| `COMPILER_TOKEN` | yes | Shared secret, identical in both services |
+| `ALLOWED_ORIGINS` | yes | Page origin, e.g. `http://localhost:8080` |
+| `COMPILER_URL` | no | Compiler address. Empty skips compilation |
+| `DATA_DIR` | no | Job storage, default `./jobs` |
+| `PANDOC_PATH` | no | Full path to `pandoc` when it is not on PATH |
 
 ---
 

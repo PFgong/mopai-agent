@@ -13,7 +13,7 @@ SOURCE = ROOT / 'agent'
 OUTPUT = ROOT / 'dist' / 'mopai-agent.zip'
 
 # Directories never shipped: caches and any job data left from local runs.
-SKIP_DIRS = {'__pycache__', '.pytest_cache', 'jobs', 'data', '.venv', 'venv'}
+SKIP_DIRS = {'__pycache__', '.pytest_cache', 'jobs', 'logs', 'data', '.venv', 'venv'}
 # Secrets are never bundled. .env.example is the only env file that ships.
 SKIP_FILES = {'.env'}
 SKIP_SUFFIX = {'.pyc', '.pyo', '.log'}

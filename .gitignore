@@ -11,6 +11,9 @@ data/
 *.log
 !dist/sample/compile.log
 
+# 一键启动脚本写的服务日志
+agent/logs/
+
 # Python
 __pycache__/
 *.py[cod]

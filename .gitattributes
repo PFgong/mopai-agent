@@ -2,6 +2,11 @@
 # checkout on Linux/macOS, regardless of the committer's platform.
 * text=auto eol=lf
 
+# Windows 脚本必须以 CRLF 检出，否则 cmd.exe / PowerShell 解析会出问题
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
 *.png binary
 *.pdf binary
 *.zip binary

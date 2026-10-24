@@ -9,15 +9,29 @@ COMPILER_TOKEN=os.environ.get('COMPILER_TOKEN','')
 # Override when latexmk is not on PATH (for example a portable MiKTeX install).
 LATEXMK=os.environ.get('LATEXMK_BIN','latexmk')
 def kill(proc):
-    """Terminate a timed-out build on both POSIX and Windows.
+    """Terminate a timed-out build, including everything it spawned.
 
-    os.killpg and signal.SIGKILL do not exist on Windows, so a bare call there
-    raises AttributeError exactly when we are already in trouble.
+    On Windows Popen.kill() only ends the direct child — when latexmk is used
+    that is perl.exe, and the TeX engine it started keeps running and keeps the
+    stdout pipe open. A later communicate() would then block forever instead of
+    reporting the timeout, so we also ask Windows to kill the whole tree.
     """
     if hasattr(os,'killpg'):
-        os.killpg(proc.pid,signal.SIGKILL)
-    else:
+        try:
+            os.killpg(proc.pid,signal.SIGKILL)
+            return
+        except Exception:
+            pass
+    try:
         proc.kill()
+    except Exception:
+        pass
+    if os.name=='nt':
+        try:
+            subprocess.run(['taskkill','/PID',str(proc.pid),'/T','/F'],
+                           stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=20)
+        except Exception:
+            pass
 @app.get('/health')
 def health():
     return {'ok':True,'latexmk':shutil.which(LATEXMK) or '','latexmk_bin':LATEXMK}
@@ -30,22 +44,57 @@ def authorize(x_compiler_token: str=Header(default='')):
     if not COMPILER_TOKEN: return
     if not secrets.compare_digest(x_compiler_token,COMPILER_TOKEN): raise HTTPException(401,'Compiler Token 无效')
 def run(cmd,cwd,env,timeout=110):
-    """Run a TeX tool, returning (returncode, stdout+stderr bytes)."""
+    """Run a TeX tool, returning (returncode, stdout+stderr bytes).
+
+    Output is collected in a temp file instead of a pipe. With a pipe, killing a
+    timed-out build can still leave grandchildren holding the write end open, and
+    communicate() would then wait forever rather than returning the timeout.
+    """
     try:
-        proc=subprocess.Popen(cmd,cwd=cwd,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True,env=env)
+        with tempfile.TemporaryFile() as sink:
+            proc=subprocess.Popen(cmd,cwd=cwd,stdout=sink,stderr=subprocess.STDOUT,start_new_session=True,env=env)
+            timed_out=False
+            try:
+                proc.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                timed_out=True
+                kill(proc)
+                try:
+                    proc.wait(timeout=20)
+                except subprocess.TimeoutExpired:
+                    pass
+            sink.flush(); sink.seek(0)
+            output=sink.read()
     except FileNotFoundError:
-        return 127, ('未找到可执行文件：'+cmd[0]).encode()
-    try:
-        output,_=proc.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        kill(proc); output,_=proc.communicate()
-        return 124, output+'\n[mopai] 编译超时，已终止。'.encode('utf-8')
+        return 127, ('未找到可执行文件：'+cmd[0]).encode('utf-8')
+    if timed_out:
+        return 124, output+('\n[mopai] 编译超过 %d 秒，已终止。\n' % timeout).encode('utf-8')
     return proc.returncode, output
 
 
 SAFE=['-no-shell-escape','-interaction=nonstopmode','-halt-on-error','-file-line-error']
 # Output that means the build toolchain itself is broken, not the document.
 TOOLING_MARKERS=('perl','script engine','command not found','no such file or directory','latexmk 未找到')
+
+# Environment problems that surface as a document error. Without a hint the user
+# sees only "Undefined control sequence" and has no idea their TeX install is stale.
+ENV_HINTS=(
+    ('undefined control sequence',
+     '看起来是 TeX 发行版与宏包版本不匹配（常见于发行版过旧）。'
+     'MiKTeX：打开 MiKTeX Console → Tasks → Update；TeX Live：运行 tlmgr update --all。'),
+    ("sty' not found",
+     '缺少宏包。MiKTeX 请在控制台把 "Always install missing packages on the fly" 设为 Yes；'
+     'TeX Live 请用 tlmgr install <宏包> 安装。'),
+    ('no output was made',
+     '编译没有产出 PDF，请查看下方日志中第一条报错。'),
+)
+
+
+def env_hints(log):
+    """Return a human-readable block explaining failures that are not the document's fault."""
+    low=log.lower()
+    tips=['[mopai] '+tip for marker,tip in ENV_HINTS if marker in low]
+    return ('\n'.join(tips)+'\n\n') if tips else ''
 
 
 def direct_build(engine, name, stem, cwd, env):
@@ -93,6 +142,8 @@ def compile_bytes(data,entry,engine):
             rc,output,pdf=direct_build(engine,name,stem,cwd,env)
             mode=engine+'（未找到 latexmk，已直接调用）'
         result={'ok':rc==0 and pdf.exists(),'mode':mode,'log':output.decode(errors='replace')[-60000:]}
+        if not result['ok']:
+            result['log']=env_hints(result['log'])+result['log']
         if result['ok']: result['pdf_base64']=base64.b64encode(pdf.read_bytes()).decode()
         return result
 @app.post('/compile',dependencies=[Depends(authorize)])
